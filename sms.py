@@ -61,11 +61,11 @@ def HasAlreadySentMessage(toNumber, throttleInMinutes):
         return False # message has not been sent.
     # now we know we have a datetime list last text was sent...
     #print(lastdatetime.strftime('%Y-%m-%d-%H-%M-%S'))
-    throttledate = datetime.datetime.now() - datetime.timedelta(minutes=throttleInMinutes)
+    throttledate = datetime.datetime.now() - datetime.timedelta(minutes=int(throttleInMinutes))
     #print(throttledate.strftime('%Y-%m-%d-%H-%M-%S'))
     return lastdatetime > throttledate
 
-def WriteTimeToLogFile(lto,lmsg):
+def LogMessageSentDetails(lto,lmsg):
     import datetime
     obj = {}
     obj['datetime'] = datetime.datetime.now()
@@ -79,7 +79,7 @@ def FindLastTimestampFromNumber(number):
     logs = logfile
 
     if(len(logs)<=0):
-        #print("no logs added yet")
+        print("no logs added yet")
         return None
 
     #print(logs)
@@ -89,24 +89,26 @@ def FindLastTimestampFromNumber(number):
         #print("item:" + item["to"])
         #print("number:" +number)
         if(item['to']==number):
-            #print("found number in logs")
+            print("found number " + str(number) + " in logs. datetime: " +  item['datetime'].strftime('%Y-%m-%d-%H-%M-%S'))
             #print(item['datetime'].strftime('%Y-%m-%d-%H-%M-%S'))
             return item['datetime']
     return None # not found
 
 def SendAlert(configs,secrets,msg):
     for number in configs['to']:
-        if(HasAlreadySentMessage(number,configs['ThrottleInMinutes'])):
+        if HasAlreadySentMessage(number,configs['ThrottleInMinutes']) is True:
+            print("Already sent message to: " + number)
             continue
         else:
             print("sending text to: " + number + ": " + msg)
             SendSMS(secrets['account'],secrets['token'], number, configs['from'], msg)
+            LogMessageSentDetails(number,msg)
 
 configs =''
 with open('sms.conf') as json_data:
     configs = json.load(json_data)
 
-print(configs)
+#print(configs)
 
 secrets = ''
 
@@ -115,21 +117,23 @@ with open('sms.secrets') as json_data:
 
 while True:
 
-    # get request to get wood stove temp.
-    stoveTempInC = json.loads(urllib.request.urlopen("http://192.168.1.3/api/getLatestWoodStoveDataRow.php?numRows=1").read())[0]['temp']
+    try:
+        # get request to get wood stove temp.
+        stoveTempInC = float(json.loads(urllib.request.urlopen("http://192.168.1.3/api/getLatestWoodStoveDataRow.php?numRows=1").read())[0]['temp'])
 
-    weatherTempInC = json.loads(urllib.request.urlopen("http://192.168.1.3/api/getLatestWeatherDataRow.php?numRows=1").read())[0]['temp']
-    #print(stoveTempInC)
-    #print(weatherTempInC)
+        weatherTempInC = float(json.loads(urllib.request.urlopen("http://192.168.1.3/api/getLatestWeatherDataRow.php?numRows=1").read())[0]['temp'])
+        #print(stoveTempInC)
+        #print(weatherTempInC)
 
-    if IsStoveHighTemp(stoveTempInC, weatherTempInC):
-        # send message to all phone numbers if not already sent with in throttle limit
-        tempinF= +stoveTempInC *1.8 + 32
-        SendAlert(configs, secrets, "WoodStove Too HOT! Temp: " + str(tempinF))
-    elif IsStoveLowTemp(stoveTempInC, weatherTempInC):
-        # send message to all phone numbers if not already sent with in throttle limit
-        tempinF= +stoveTempInC *1.8 + 32
-        SendAlert(configs, secrets, "WoodStove Needs wood! Temp: " + str(tempinF))
-
-
+        if IsStoveHighTemp(stoveTempInC, weatherTempInC):
+            # send message to all phone numbers if not already sent with in throttle limit
+            tempinF= float(stoveTempInC) *1.8 + 32
+            SendAlert(configs, secrets, "WoodStove Too HOT! Temp: " + str(tempinF))
+        elif IsStoveLowTemp(stoveTempInC, weatherTempInC):
+            # send message to all phone numbers if not already sent with in throttle limit
+            tempinF= float(stoveTempInC) *1.8 + 32
+            SendAlert(configs, secrets, "WoodStove Needs wood! Temp: " + str(tempinF))
+    except ValueError:
+        print("fetching data may have returned none...")
+          
     time.sleep(60*5) # check temps every 5 minutes
